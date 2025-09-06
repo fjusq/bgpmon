@@ -1,0 +1,4 @@
+services:
+  bird:
+    restart: "no"
+    entrypoint: ["/bin/sh", "-lc", "sleep infinity"]

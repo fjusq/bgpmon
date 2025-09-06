@@ -1,0 +1,80 @@
+# BIRD2 configuration (generated)
+
+# Logging
+# Use stderr (container logs). Level comes from env.
+# Options: all | info | warning | error | debug
+log stderr all;
+
+# Housekeeping
+router id @@ROUTER_ID@@;
+
+# Keep device list current (for next-hop tracking etc.)
+protocol device {
+    scan time @@BIRD_SCAN_TIME@@;
+}
+
+# Optional: survive brief peer flaps more gracefully
+# (Keeps learned routes for a bit if a neighbor restarts cleanly)
+#graceful restart on;
+
+# --- Route tables (explicit is nice for collectors) ---
+# table master4;
+# table master6;
+
+# --- Import filters: accept everything, tag, and never export ---
+# You can extend these to do RPKI validation, tag communities, etc.
+filter COLLECT_IMPORT_V4 {
+  # Example tagging (edit/remove as you wish):
+  # bgp_large_community.add((@@LOCAL_AS@@, 100, 4));
+  accept;
+}
+
+filter COLLECT_IMPORT_V6 {
+  # bgp_large_community.add((@@LOCAL_AS@@, 100, 6));
+  accept;
+}
+
+# --- Optional: BFD for fast failure detection (enable if your peers support it) ---
+# protocol bfd {
+#   interface "*" { min rx interval 200 ms; min tx interval 200 ms; idle tx interval 400 ms; };
+# }
+
+# --- BGP templates to keep peer stanzas small ---
+template bgp PEER_V4 {
+  local as @@LOCAL_AS@@;
+  ipv4 {
+    table master4;
+    import filter COLLECT_IMPORT_V4;
+    export none;                     # Collector never announces
+    receive limit 2000000 action block;  # Safety valve; tune as needed
+  };
+  graceful restart yes;
+  # bfd yes;                         # uncomment if using protocol bfd above
+  hold time 90;
+  keepalive time 30;
+  connect delay time 5;
+  startup hold time 60;
+  # multihop 2;                      # uncomment if peering is not directly connected
+  debug {routes};
+}
+
+template bgp PEER_V6 {
+  local as @@LOCAL_AS@@;
+  ipv6 {
+    table master6;
+    import filter COLLECT_IMPORT_V6;
+    export none;
+    receive limit 2000000 action block;
+  };
+  graceful restart yes;
+  # bfd yes;
+  hold time 90;
+  keepalive time 30;
+  connect delay time 5;
+  startup hold time 60;
+  # multihop 2;
+  debug {routes};
+}
+
+# === Peers ===
+@@PEERS_SNIPPET@@

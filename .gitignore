@@ -1,0 +1,28 @@
+# Ignore actual env files (use .env.example instead)
+.env
+
+# Logs
+*.log
+logs/
+syslog-ng/data/
+
+# Docker stuff
+*.pid
+*.sock
+
+# Build artifacts
+*.bak
+*.swp
+*~
+bird/config/
+
+# Editor/IDE
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+Makefile
