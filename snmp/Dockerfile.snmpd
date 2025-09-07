@@ -1,11 +1,5 @@
-# snmp/Dockerfile.snmpd
 FROM alpine:3.20
-
-# net-snmp daemon + tools, and ss for the healthcheck
 RUN apk add --no-cache net-snmp net-snmp-tools iproute2
-
-# No shared /agentx volume needed with TCP AgentX
 COPY agentx.cfg /etc/snmp/snmpd.conf
-
 EXPOSE 161/udp 705
 CMD ["sh","-lc","exec snmpd -f -Lo -C -c /etc/snmp/snmpd.conf"]

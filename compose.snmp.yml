@@ -10,15 +10,13 @@ services:
     container_name: bgpm-snmpd
     restart: unless-stopped
     networks: [ monitoring ]
-    ports:
-    - "1161:161/udp"
     volumes:
       - ./snmp/agentx.cfg:/etc/snmp/snmpd.conf:ro
-    command: >
-      sh -lc 'exec snmpd -f -Lo -C -c /etc/snmp/snmpd.conf'
+    ports:
+      - "1161:161/udp"  # expose SNMP to host for tests
+    command: ["sh","-lc","exec snmpd -f -Lo -C -c /etc/snmp/snmpd.conf"]
     healthcheck:
-      # Wait until AgentX TCP (705) is listening
-      test: ["CMD-SHELL", "ss -ltn | grep -q ':705'"]
+      test: ["CMD-SHELL","snmpget -v2c -c public -r1 -t1 localhost 1.3.6.1.2.1.1.3.0 >/dev/null 2>&1"]
       interval: 5s
       timeout: 2s
       retries: 20
@@ -31,12 +29,11 @@ services:
     restart: unless-stopped
     networks: [ monitoring ]
     environment:
-      - AGENTX_SOCKET=tcp:bgpm-snmpd:705
-      - BIRD_SOCK=/run/bird/bird.ctl
-      - ASN_DEFAULT=65000
-    command: >
-      sh -lc 'mkdir -p /var/agentx && ln -sf /agentx/master /var/agentx/master &&
-              exec python /app/agent_main.py'
+      AGENTX_SOCKET: tcp:bgpm-snmpd:705
+      BIRD_SOCK: /run/bird/bird.ctl
+      ASN_DEFAULT: "65000"
+    volumes:
+      - bird-run:/run/bird:ro
     depends_on:
       snmpd:
-        condition: service_healthy
+        condition: service_started
