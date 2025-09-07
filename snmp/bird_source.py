@@ -1,16 +1,29 @@
 # snmp/bird_source.py
-import os, subprocess, re, ipaddress
+import os, subprocess, re, ipaddress, logging, json
+log = logging.getLogger("bgpmon.bird")
 
-BIRD_SOCK = os.getenv("BIRD_SOCK", None)
+BIRD_SOCK = os.getenv("BIRD_SOCK", "/run/bird/bird.ctl")
+BIRD_CMD  = ["birdc"] + (["-s", BIRD_SOCK] if BIRD_SOCK else [])
 
-def _birdc(cmd: str) -> str:
-    base = ["birdc"]
-    if BIRD_SOCK:
-        base += ["-s", BIRD_SOCK]
-    return subprocess.check_output(base + cmd.split(), text=True)
+def _run(cmd):
+    out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT)
+    log.debug("CMD ok: %s", " ".join(cmd))
+    log.debug("OUT head:\n%s", out[:800])
+    return out
 
-RID_RE = re.compile(r"Router ID is (\d+\.\d+\.\d+\.\d+)")
-AS_RE  = re.compile(r"Local AS number (\d+)", re.IGNORECASE)
+def _birdc(args: str) -> str:
+    return _run(BIRD_CMD + args.split())
+
+RID_RE        = re.compile(r"Router ID is (\d+\.\d+\.\d+\.\d+)")
+LOCAL_AS_RE   = re.compile(r"^\s*Local AS:\s*(\d+)\s*$", re.I)
+
+# Inside "show protocols all <name>"
+NEIGH_ADDR_RE = re.compile(r"^\s*Neighbor address:\s*([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\s*$", re.I)
+NEIGH_ASN_RE  = re.compile(r"^\s*Neighbor AS:\s*(\d+)\s*$", re.I)
+PEER_ID_RE    = re.compile(r"^\s*Neighbor ID:\s*([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\s*$", re.I)
+STATE_RE      = re.compile(r"^\s*BGP state:\s*(\S+)", re.I)
+
+LINE_RE       = re.compile(r"^\s*(\S+)\s+BGP\s+\S+\s+(\S+)\s+", re.I)  # <name> ... <state> ...
 
 def get_router_id() -> str:
     try:
@@ -20,53 +33,72 @@ def get_router_id() -> str:
     except Exception:
         return "0.0.0.0"
 
-def get_local_as() -> int:
+def get_local_as(default_as: int = 65000) -> int:
     try:
         out = _birdc("show protocols all")
-        m = AS_RE.search(out)
-        return int(m.group(1)) if m else int(os.getenv("ASN_DEFAULT", "65000"))
+        m = LOCAL_AS_RE.search(out)
+        return int(m.group(1)) if m else default_as
     except Exception:
-        return int(os.getenv("ASN_DEFAULT", "65000"))
+        return default_as
+
+def _is_ipv4(s: str) -> bool:
+    try:
+        return isinstance(ipaddress.ip_address(s), ipaddress.IPv4Address)
+    except Exception:
+        return False
 
 def list_peers():
-    """Return a list of peers with minimal fields."""
+    """Return [{name, ip, state, asn, peer_id, in_updates, out_updates}, ...] (IPv4 only)."""
     peers = []
     try:
-        out = _birdc("show protocols")
+        base = _birdc("show protocols")
     except Exception:
         return peers
 
-    for line in out.splitlines():
-        parts = line.strip().split()
-        if len(parts) >= 3 and parts[1] == "BGP":
-            name = parts[0]
-            state = "Established" if parts[2] == "up" else "Idle"
-            ip = "0.0.0.0"
-            asn = 0
-            try:
-                detail = _birdc(f"show protocols all {name}")
-                for dl in detail.splitlines():
-                    s = dl.strip()
-                    if s.lower().startswith("neighbor "):
-                        maybe = s.split()[1]
-                        try:
-                            ipaddress.ip_address(maybe)
-                            ip = maybe
-                        except ValueError:
-                            pass
-                    if "neighbor AS" in s or "neighbor as" in s:
-                        try:
-                            asn = int(s.split()[-1])
-                        except Exception:
-                            pass
-            except Exception:
-                pass
-            peers.append({
-                "ip": ip, "state": state, "asn": asn,
-                "peer_id": ip, "in_updates": 0, "out_updates": 0
-            })
+    names = []
+    for line in base.splitlines():
+        m = LINE_RE.match(line)
+        if m:
+            names.append((m.group(1), m.group(2)))
+
+    for name, st in names:
+        ip = None; asn = 0; state = st; peer_id = None
+        try:
+            detail = _birdc(f"show protocols all {name}")
+        except Exception:
+            detail = ""
+
+        for dl in detail.splitlines():
+            dl = dl.rstrip()
+            if  (m := NEIGH_ADDR_RE.match(dl)): ip = m.group(1)
+            elif(m := NEIGH_ASN_RE.match(dl)):  asn = int(m.group(1))
+            elif(m := PEER_ID_RE.match(dl)):    peer_id = m.group(1)
+            elif(m := STATE_RE.match(dl)):      state = m.group(1)
+
+        if not (ip and _is_ipv4(ip)):
+            # Skip non-IPv4 or missing addresses for BGP4-MIB
+            continue
+
+        peers.append({
+            "name": name,
+            "ip": ip,
+            "state": state,
+            "asn": asn,
+            "peer_id": peer_id or ip,
+            "in_updates": 0,
+            "out_updates": 0,
+        })
+
+    log.info("Parsed %d IPv4 peers: %s", len(peers), peers)
     return peers
 
-def iter_peers():
-    for p in list_peers():
-        yield p
+def snapshot(default_as: int = 65000):
+    return {
+        "router_id": get_router_id(),
+        "local_as": get_local_as(default_as),
+        "peers": list_peers(),
+    }
+
+if __name__ == "__main__":
+    logging.basicConfig(level=(logging.DEBUG if os.getenv("BIRD_DEBUG") else logging.INFO))
+    print(json.dumps(snapshot(int(os.getenv("ASN_DEFAULT","65000"))), indent=2))

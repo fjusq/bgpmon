@@ -1,5 +1,6 @@
-FROM alpine:3.20
-RUN apk add --no-cache net-snmp net-snmp-tools iproute2
+FROM debian:12-slim
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      snmpd snmp && rm -rf /var/lib/apt/lists/*
 COPY agentx.cfg /etc/snmp/snmpd.conf
 EXPOSE 161/udp 705
 CMD ["sh","-lc","exec snmpd -f -Lo -C -c /etc/snmp/snmpd.conf"]
