@@ -10,6 +10,8 @@ services:
     container_name: bgpm-snmpd
     restart: unless-stopped
     networks: [ monitoring ]
+    ports:
+    - "1161:161/udp"
     volumes:
       - ./snmp/agentx.cfg:/etc/snmp/snmpd.conf:ro
     command: >
@@ -32,6 +34,9 @@ services:
       - AGENTX_SOCKET=tcp:bgpm-snmpd:705
       - BIRD_SOCK=/run/bird/bird.ctl
       - ASN_DEFAULT=65000
+    command: >
+      sh -lc 'mkdir -p /var/agentx && ln -sf /agentx/master /var/agentx/master &&
+              exec python /app/agent_main.py'
     depends_on:
       snmpd:
         condition: service_healthy
