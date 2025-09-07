@@ -29,6 +29,6 @@ class Agent(pyagentx3.Agent):
 
 if __name__ == "__main__":
   pyagentx3.setup_logging()
-  a = Agent(agentx=os.getenv("AGENTX_SOCKET", "tcp:bgpm-snmpd:705"))
+  a = Agent()
   try: a.start()
   except KeyboardInterrupt: a.stop()

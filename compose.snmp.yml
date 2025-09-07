@@ -2,6 +2,10 @@ networks:
   monitoring:
     external: true
 
+volumes:
+  snmp-agentx:
+
+
 services:
   snmpd:
     build:
@@ -12,6 +16,7 @@ services:
     networks: [ monitoring ]
     volumes:
       - ./snmp/agentx.cfg:/etc/snmp/snmpd.conf:ro
+      - snmp-agentx:/var/agentx
     ports:
       - "1161:161/udp"  # expose SNMP to host for tests
     command: ["sh","-lc","exec snmpd -f -Lo -C -c /etc/snmp/snmpd.conf"]
@@ -34,6 +39,7 @@ services:
       ASN_DEFAULT: "65000"
     volumes:
       - bird-run:/run/bird:ro
+      - snmp-agentx:/var/agentx       # <— match the same path
     depends_on:
       snmpd:
         condition: service_started
