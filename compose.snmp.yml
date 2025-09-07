@@ -1,0 +1,37 @@
+networks:
+  monitoring:
+    external: true
+
+services:
+  snmpd:
+    build:
+      context: ./snmp
+      dockerfile: Dockerfile.snmpd
+    container_name: bgpm-snmpd
+    restart: unless-stopped
+    networks: [ monitoring ]
+    volumes:
+      - ./snmp/agentx.cfg:/etc/snmp/snmpd.conf:ro
+    command: >
+      sh -lc 'exec snmpd -f -Lo -C -c /etc/snmp/snmpd.conf'
+    healthcheck:
+      # Wait until AgentX TCP (705) is listening
+      test: ["CMD-SHELL", "ss -ltn | grep -q ':705'"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
+
+  snmp-agent:
+    build:
+      context: ./snmp
+      dockerfile: Dockerfile.agent
+    container_name: bgpm-snmp-agent
+    restart: unless-stopped
+    networks: [ monitoring ]
+    environment:
+      - AGENTX_SOCKET=tcp:bgpm-snmpd:705
+      - BIRD_SOCK=/run/bird/bird.ctl
+      - ASN_DEFAULT=65000
+    depends_on:
+      snmpd:
+        condition: service_healthy

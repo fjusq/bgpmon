@@ -26,8 +26,12 @@ services:
       - BIRD_GR_TIMER=${BIRD_GR_TIMER:-240}
       - BIRD_SCAN_TIME=${BIRD_SCAN_TIME:-15}
 
+      # (optional) tune metrics loop
+      - METRICS_INTERVAL=${METRICS_INTERVAL:-30}
+
     volumes:
       - ./bird/config:/etc/bird
+      - bgpmon-run:/var/run/bgpmon
     logging: *logging
     healthcheck:
       test: ["CMD-SHELL", "birdc show status | grep -q 'BIRD'"]
@@ -45,3 +49,25 @@ services:
       - "8514:8514/udp"
     volumes:
       - ./syslog-ng/data:/var/log/syslog
+
+
+  snmpd:
+    image: alpine:3.20
+    container_name: ${PROJECT_NAME:-bgpm}-snmpd
+    restart: unless-stopped
+    command: >
+      sh -lc "apk add --no-cache net-snmp net-snmp-tools &&
+              install -m 0755 /config/bgpmon_snmp.sh /usr/local/bin/bgpmon_snmp.sh &&
+              exec /usr/sbin/snmpd -f -Le -C -c /config/snmpd.conf"
+    cap_add:
+      - NET_BIND_SERVICE
+    ports:
+      - "161:161/udp"
+    volumes:
+      - ./snmp/snmpd.conf:/config/snmpd.conf:ro
+      - ./snmp/bgpmon_snmp.sh:/config/bgpmon_snmp.sh:ro
+      - bgpmon-run:/var/run/bgpmon:ro
+
+volumes:
+  bgpmon-run:
+    driver: local

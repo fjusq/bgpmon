@@ -109,6 +109,9 @@ sed \
   -e "s|@@PEERS_SNIPPET@@|$SNIP_ESCAPED|g" \
   "$TEMPLATE" > "$OUT"
 
+# start metrics writer in background
+/usr/local/bin/bgpmon_write_metrics.sh &
+
 # --- Validate (non-fatal) & run bird in foreground ---
 bird -p -c "$OUT" || echo "Config check FAILED — continuing so you can debug"
 bird -f -d -c "$OUT" || {
