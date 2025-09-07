@@ -38,7 +38,7 @@ services:
       BIRD_SOCK: /run/bird/bird.ctl
       ASN_DEFAULT: "65000"
     volumes:
-      - bird-run:/run/bird:ro
+      - bird-run:/run/bird
       - snmp-agentx:/var/agentx       # <— match the same path
     depends_on:
       snmpd:

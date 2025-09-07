@@ -31,7 +31,7 @@ services:
       - bird-run:/run/bird
     logging: *logging
     healthcheck:
-      test: ["CMD-SHELL", "birdc show status | grep -q 'BIRD'"]
+      test: ["CMD-SHELL", "birdc -s /run/bird/bird.ctl show status | grep -q 'BIRD'"]
       interval: 30s
       timeout: 5s
       retries: 5
